@@ -1,0 +1,42 @@
+E0s: '{1:-13.599494,6:-148.682476882,29:-1677.417036}'
+amsgrad: true
+batch_size: 4
+config_type_weights: '{"Default":1.0}'
+correlation: 3
+default_dtype: float32
+device: cuda
+ema: true
+# hidden_irreps: "64x0e + 64x1o + 64x2e"
+# foundation_model: "use_mp" 
+# foundation_model_readout: true
+ema_decay: 0.99
+energy_key: dft_energy
+energy_weight: 20.0
+forces_key: dft_forces
+forces_weight: 1000.0
+num_channels: 128
+max_L: 1
+interaction: RealAgnosticResidualInteractionBlock
+interaction_first: RealAgnosticResidualInteractionBlock
+max_ell: 3
+# max_num_epochs: 100
+max_num_epochs: 300
+model: MACE
+num_cutoff_basis: 5
+num_interactions: 2
+patience: 20
+r_max: 5.0
+restart_latest: true
+save_cpu: true
+scaling: rms_forces_scaling
+start_swa: 100
+swa: true
+swa_energy_weight: 100.0
+swa_forces_weight: 100.0
+swa_lr: 1e-2
+# train_file: ../TRAIN/train_$2.xyz
+# valid_file: ../TRAIN/train_$2_val.xyz
+# wandb: true
+wandb_entity: larsleons
+wandb_project: pynta-dev
+weight_decay: 5.0e-07
