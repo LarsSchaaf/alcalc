@@ -1,6 +1,6 @@
 # AL Calculator
 
-An ase calculator that takes care of dataset generation for ML force fields in the eara of foundation models. Currently support the MACE force field architecture and using active learning via committes. 
+An ase calculator that takes care of dataset generation for ML force fields in the eara of foundation models. Currently support the MACE force field architecture and using active learning via commitees. 
 
 
 ## Installation
