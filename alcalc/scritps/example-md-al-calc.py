@@ -1,4 +1,5 @@
 # Define the base directory for the new location
+# Works with mace: 1700caef7dcaaaea3f6d6635ffc603e0fd52de9c (Jul 16 11:35:44 2024)
 import os
 import shutil
 
