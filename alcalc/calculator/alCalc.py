@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import mace.cli.run_train
 
+
 class AlMaceCalculator(MACECalculator):
     def __init__(
         self,
@@ -27,8 +28,8 @@ class AlMaceCalculator(MACECalculator):
         num_committes=4,
         mlff_train_cmd=None,
         logger=None,
-        initial=None, # contains a already trained MLFF with correct number of neighbours
-        initial_atom=None, # If no initial MLFF is given, use this atom to start training -> evaluate DFT + retrain
+        initial=None,  # contains a already trained MLFF with correct number of neighbours
+        initial_atom=None,  # If no initial MLFF is given, use this atom to start training -> evaluate DFT + retrain
         **kwargs,
     ):
         """Initialize the AL-MACE calculator with given parameters."""
@@ -36,19 +37,23 @@ class AlMaceCalculator(MACECalculator):
         if logger is None:
             self.logger = logging.getLogger(__name__)
             # remove all handlers
-            for handler in self.logger.handlers[:]:  # Get a copy of the list to avoid modification issues
+            for handler in self.logger.handlers[
+                :
+            ]:  # Get a copy of the list to avoid modification issues
                 self.logger.removeHandler(handler)
-            if True:#not self.logger.hasHandlers():
-                print('Adding handlers')
+            if True:  # not self.logger.hasHandlers():
+                print("Adding handlers")
                 handler = logging.StreamHandler()
                 # self.logger.addHandler(handler)
                 # Create a FileHandler
-                log_fname = os.path.join(AL_dir, f'logfile-{uuid4().hex}.log')
+                log_fname = os.path.join(AL_dir, f"logfile-{uuid4().hex}.log")
                 handler = logging.FileHandler(log_fname)
-                formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+                formatter = logging.Formatter(
+                    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                )
                 handler.setFormatter(formatter)
                 self.logger.addHandler(handler)
-                self.logger.info(f'Logging to {log_fname}')
+                self.logger.info(f"Logging to {log_fname}")
             self.logger.setLevel(logging.DEBUG)
         else:
             self.logger = logger
@@ -56,10 +61,9 @@ class AlMaceCalculator(MACECalculator):
         self.logger.info("Initializing AL-MACE calculator: {}".format(AL_dir))
 
         if initial is not None and not os.path.exists(AL_dir):
-            self.logger.info('Copying files from initial to current directory')
-            self.logger.info(f'Initial: {initial}, AL_dir: {AL_dir}')
+            self.logger.info("Copying files from initial to current directory")
+            self.logger.info("Initial: %s, AL_dir: %s", initial, AL_dir)
             shutil.copytree(initial, AL_dir)
-
 
         # Name directories
         self.dir_AL = AL_dir
@@ -70,7 +74,10 @@ class AlMaceCalculator(MACECalculator):
         # make all folders
         os.makedirs(self.dir_AL, exist_ok=True)
         os.makedirs(self.dir_train, exist_ok=True)
-        [os.makedirs(os.path.join(self.dir_train,i), exist_ok=True) for i in ['new', 'train']]
+        [
+            os.makedirs(os.path.join(self.dir_train, i), exist_ok=True)
+            for i in ["new", "train"]
+        ]
         os.makedirs(self.dir_mlff, exist_ok=True)
         self.dir_initial_working = os.getcwd()
 
@@ -90,24 +97,26 @@ class AlMaceCalculator(MACECalculator):
         print(self.timestamp_fail)
 
         if initial_atom is not None:
-            self.logger.info('Using initial atom')
+            self.logger.info("Using initial atom")
             self.initial_atom = initial_atom.copy()
-            self.logger.info(f'Initial atom: {self.initial_atom}')
+            self.logger.info("Initial atom: %s", self.initial_atom)
             self.calculate_dft(self.initial_atom)
-            self.logger.info(f'Running DFT')
+            self.logger.info("Running DFT")
             self.create_new_training(self.initial_atom)
             self.timestamp_train = datetime.datetime.now().strftime(self.time_format)
-            self.logger.info(f'Training Force Field: {self.timestamp_train}')
+            self.logger.info("Training Force Field: %s", self.timestamp_train)
             self.update_mlffs()
 
         if len(self.get_fname_mlffs()) < self.num_committes and initial_atom is None:
             self.logger.info(
-                f'Not enough MLFFs to run committee: {len(self.get_fname_mlffs())} < {self.num_committes}'
+                "Not enough MLFFs to run committee: %d < %d",
+                len(self.get_fname_mlffs()),
+                self.num_committes,
             )
             self.logger.info(
-                f'Make sure the initial model directory ({initial}) has sufficient amount of models.' + 'Or make sure you supply an initial traning set to initial_atom',
-                )
-
+                f"Make sure the initial model directory ({initial}) has sufficient amount of models."
+                + "Or make sure you supply an initial traning set to initial_atom",
+            )
 
         mace_fnames = self.update_mlffs()
         super().__init__(mace_fnames, **kwargs)
@@ -120,59 +129,62 @@ class AlMaceCalculator(MACECalculator):
             return []
 
         if current:
-            timestamps = np.array([int(fname.split('/')[-2].split('_')[1]) for fname in mlff_fnames])
+            timestamps = np.array(
+                [int(fname.split("/")[-2].split("_")[1]) for fname in mlff_fnames]
+            )
 
             mlff_fnames = mlff_fnames[timestamps >= int(self.timestamp_train)]
 
         return mlff_fnames
 
-    def calculate(self, atoms=None, properties=["energy", "forces"], system_changes=all_changes):
-        '''Calculate energy and forces of the atoms.'''
+    def calculate(
+        self, atoms=None, properties=["energy", "forces"], system_changes=all_changes
+    ):
+        """Calculate energy and forces of the atoms."""
         super().calculate(atoms, properties, system_changes)
         self.mace.calculate(atoms)
         self.results = self.mace.results
 
-        if 'forces_comm' in self.results.keys():
-            force_var = np.var(self.results['forces_comm'], axis=0)
+        if "forces_comm" in self.results.keys():
+            force_var = np.var(self.results["forces_comm"], axis=0)
         else:
-            force_var = np.zeros_like(self.results['forces'])
+            force_var = np.zeros_like(self.results["forces"])
         force_std = np.sqrt(np.sum(force_var, axis=1))
-        self.logger.debug(f'Force std: {np.max(force_std)}')
+        self.logger.debug(f"Force std: {np.max(force_std)}")
 
         if np.max(force_std) > self.al_threshold:
-            self.logger.info(f'AL threshold exceeded: {np.max(force_std)} > {self.al_threshold}')
+            self.logger.info(
+                f"AL threshold exceeded: {np.max(force_std)} > {self.al_threshold}"
+            )
             self.timestamp_fail = datetime.datetime.now().strftime(self.time_format)
             new_at = self.calculate_dft(atoms)
-            self.logger.info(f'Running DFT')
+            self.logger.info(f"Running DFT")
             self.create_new_training(new_at)
             self.timestamp_train = datetime.datetime.now().strftime(self.time_format)
-            self.logger.info(f'Training Force Field: {self.timestamp_train}')
+            self.logger.info(f"Training Force Field: {self.timestamp_train}")
             self.update_mlffs()
-
 
     def calculate_dft(self, atoms):
         """Calculate properties using DFT."""
         self.dft_calculator.calculate(atoms)
         self.results = self.dft_calculator.results
-        atoms.info['dft_energy'] = self.results['energy']
-        atoms.arrays['dft_forces'] = self.results['forces']
+        atoms.info["dft_energy"] = self.results["energy"]
+        atoms.arrays["dft_forces"] = self.results["forces"]
 
         return atoms
 
     def create_new_training(self, atoms):
         """Save atomic configurations for further training."""
-        filename = os.path.join(
-            self.dir_train,f"new/new-{self.timestamp_fail}.xyz"
-        )
+        filename = os.path.join(self.dir_train, f"new/new-{self.timestamp_fail}.xyz")
         write(filename, atoms, append=True)
-        all_new = glob(os.path.join(self.dir_train,"new/new-*.xyz"))
+        all_new = glob(os.path.join(self.dir_train, "new/new-*.xyz"))
         traj_train = []
-        [traj_train.extend(read(fname, index=':')) for fname in all_new]
-        self.logger.info(f'Number of new training configs: {len(traj_train)}')
-        filename = os.path.join(self.dir_train, f"train/train-{self.timestamp_fail}.xyz")
+        [traj_train.extend(read(fname, index=":")) for fname in all_new]
+        self.logger.info(f"Number of new training configs: {len(traj_train)}")
+        filename = os.path.join(
+            self.dir_train, f"train/train-{self.timestamp_fail}.xyz"
+        )
         write(filename, traj_train)
-
-
 
         # for each committe create sepeerate train and valid split
         # TODO: cumulative new - for all new configurations created since failure
@@ -189,12 +201,13 @@ class AlMaceCalculator(MACECalculator):
             train_idx, validation_idx = indices[:split_at], indices[split_at:]
             train = [traj_train[i] for i in train_idx]
             validation = [traj_train[i] for i in validation_idx]
-            logging.info(f"Split {it+1} | Train indexes: {list(map(traj_train.index, train))} | "
-                        f"Validation indexes: {list(map(traj_train.index, validation))}")
-            write(filename.replace('.xyz', f'_{it}.xyz'), [atoms, *traj_train])
-            write(filename.replace('.xyz', f'_{it}_val.xyz'), [atoms, *validation])
+            logging.info(
+                f"Split {it+1} | Train indexes: {list(map(traj_train.index, train))} | "
+                f"Validation indexes: {list(map(traj_train.index, validation))}"
+            )
+            write(filename.replace(".xyz", f"_{it}.xyz"), [atoms, *traj_train])
+            write(filename.replace(".xyz", f"_{it}_val.xyz"), [atoms, *validation])
             self.current_train_fname = filename
-
 
     def save_train(self, atoms):
         """Save atomic configurations for further training."""
@@ -208,60 +221,77 @@ class AlMaceCalculator(MACECalculator):
         for seed in range(self.num_committes):
             if len(self.get_fname_mlffs()) < self.num_committes:
                 self.train_mace(
-                    self.current_train_fname.replace('.xyz', f'_{seed}.xyz'),
-                    self.current_train_fname.replace('.xyz', f'_{seed}_val.xyz'),
-                    name=f'{self.timestamp_fail}_{self.timestamp_train}_{seed}', seed=seed)
+                    self.current_train_fname.replace(".xyz", f"_{seed}.xyz"),
+                    self.current_train_fname.replace(".xyz", f"_{seed}_val.xyz"),
+                    name=f"{self.timestamp_fail}_{self.timestamp_train}_{seed}",
+                    seed=seed,
+                )
             else:
                 break
         assert (
             len(self.get_fname_mlffs()) >= self.num_committes
         ), "Not enough MLFFs to run committee"
-        mace_fnames = sorted(self.get_fname_mlffs())[-self.num_committes:]
+        mace_fnames = sorted(self.get_fname_mlffs())[-self.num_committes :]
         self.logger.info("Using MLFFs: {}".format(mace_fnames))
         self.mace = MACECalculator(mace_fnames, **self.mlff_parameters)
         return mace_fnames
 
-    def train_mace(self,train_fname, valid_fname, name, seed):
+    def train_mace(self, train_fname, valid_fname, name, seed):
         # copy latest checkpoint
-        fpat_checkpoint = os.path.join(self.dir_mlff, f"*_*/checkpoints/*{seed}_epoch-*_swa.pt")
+        fpat_checkpoint = os.path.join(
+            self.dir_mlff, f"*_*/checkpoints/*{seed}_epoch-*_swa.pt"
+        )
         possible_checkpoints = glob(fpat_checkpoint)
         print(len(possible_checkpoints))
         print(fpat_checkpoint)
         if len(possible_checkpoints) > 0:
-        # /home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/old-9-almost/MLFF/20231109123707_20231109123707/checkpoints/20231109123707_20231109123707_1_run-1_epoch-12_swa.pt
+            # /home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/old-9-almost/MLFF/20231109123707_20231109123707/checkpoints/20231109123707_20231109123707_1_run-1_epoch-12_swa.pt
 
             sel_check = sorted(possible_checkpoints)[-1]
-            os.makedirs(os.path.join(self.dir_mlff, f'{self.timestamp_fail}_{self.timestamp_train}/checkpoints'), exist_ok=True)
-            to_fname = os.path.join(self.dir_mlff, f'{self.timestamp_fail}_{self.timestamp_train}/checkpoints/{self.timestamp_fail}_{self.timestamp_train}_{seed}_run-{seed}_epoch-0.pt')
-            self.logger.info(f'Copying checkpoint: {sel_check} to {to_fname}')
+            os.makedirs(
+                os.path.join(
+                    self.dir_mlff,
+                    f"{self.timestamp_fail}_{self.timestamp_train}/checkpoints",
+                ),
+                exist_ok=True,
+            )
+            to_fname = os.path.join(
+                self.dir_mlff,
+                f"{self.timestamp_fail}_{self.timestamp_train}/checkpoints/{self.timestamp_fail}_{self.timestamp_train}_{seed}_run-{seed}_epoch-0.pt",
+            )
+            self.logger.info(f"Copying checkpoint: {sel_check} to {to_fname}")
 
             shutil.copy(sel_check, to_fname)
         # Create an argparse.Namespace object with the arguments
-        args = argparse.Namespace(train_file=train_fname,
-                                  valid_file=valid_fname,
-                                  name=name,
-                                  seed=seed,
-                                  wandb_name=name,
-                                  **self.mlff_parameters)
+        args = argparse.Namespace(
+            train_file=train_fname,
+            valid_file=valid_fname,
+            name=name,
+            seed=seed,
+            wandb_name=name,
+            **self.mlff_parameters,
+        )
 
         # Temporarily replace sys.argv
         original_argv = sys.argv
-        sys.argv = ['script_name']  # replace 'script_name' with the actual script name
+        sys.argv = ["script_name"]  # replace 'script_name' with the actual script name
         for key, value in vars(args).items():
             if value is not None:
                 if type(value) == bool and value is True:
-                    sys.argv.extend([f'--{key}'])
+                    sys.argv.extend([f"--{key}"])
                 else:
-                    sys.argv.extend([f'--{key}', str(value)])
+                    sys.argv.extend([f"--{key}", str(value)])
 
         # Call the main function
-        mlff_run_dir = os.path.join(self.dir_mlff, f'{self.timestamp_fail}_{self.timestamp_train}')
+        mlff_run_dir = os.path.join(
+            self.dir_mlff, f"{self.timestamp_fail}_{self.timestamp_train}"
+        )
         os.makedirs(mlff_run_dir, exist_ok=True)
-        self.logger.info('Running MACE training in {}'.format(mlff_run_dir))
+        self.logger.info("Running MACE training in {}".format(mlff_run_dir))
         os.chdir(mlff_run_dir)
         try:
             # Create a new logger
-            new_logger = logging.getLogger('mace')
+            new_logger = logging.getLogger("mace")
             new_logger.handlers = []
             # Replace the root logger
             logging.root = new_logger
@@ -279,7 +309,7 @@ class AlMaceCalculator(MACECalculator):
         sys.argv = original_argv
 
     def retrain_mlff(self):
-        """Retrain the MLFF with new data. """
+        """Retrain the MLFF with new data."""
         train_configs = self.read_train_configs()
         run_dir = os.path.join(self.train_dir, "mlff")
         self.timestamp_train = datetime.datetime.now().strftime(self.time_format)
