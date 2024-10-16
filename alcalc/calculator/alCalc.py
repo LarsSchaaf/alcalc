@@ -88,7 +88,6 @@ class AlMaceCalculator(MACECalculator):
         self.logger.info("Initializing AL-MACE calculator: {}".format(AL_dir))
 
         
-        
 
         # Name directories
         self.dir_AL = AL_dir

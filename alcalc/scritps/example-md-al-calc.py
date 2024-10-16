@@ -56,6 +56,7 @@ almace = AlMaceCalculator(
     device="cuda",
     default_dtype="float32",
     initial_atom=at,
+    num_rattle_configs=3
     # initial='/home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/initial-it10'
 )
 
@@ -88,17 +89,29 @@ at = at.copy()
 #     default_dtype='float32',
 # )
 at.calc = almace
+
+
+#MD
 md = Langevin(at, 1 * units.fs, temperature_K * units.kB, friction_coefficient)
 md.attach(write, interval=1, filename="md3.xyz", images=at, append=True)
-
 
 def save_time(at, dyn):
     at.info["time"] = dyn.get_time() * units.fs
 
-
 md.attach(save_time, interval=1, at=at, dyn=md)
 md.run(10000)
 
+
+""" IF ABOVE NOT WORKING TRY BELOW MD
+md = Langevin(at, 1 * units.fs, trajectory='md300.traj', temperature_K =temperature_K, friction=friction_coefficient)
+
+def save_time(at, dyn):
+    at.info["time"] = dyn.get_time() * units.fs
+
+md.attach(save_time, interval=1, at=at, dyn=md)
+md.run(50)
+print('DONE')
+"""
 
 """ ToDo
 typer: cli 
