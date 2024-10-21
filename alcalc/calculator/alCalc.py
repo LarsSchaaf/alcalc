@@ -1,4 +1,5 @@
 from ase.calculators.calculator import Calculator, all_changes
+from ase import Atoms
 import datetime
 from ase.io import read, write
 import os
@@ -32,7 +33,11 @@ class AlMaceCalculator(MACECalculator):
     initial: An already trained MLFF with correct number of neighbours                          
     initial_atom: Use this as an initial atom to start training the MLFF   TODO allow user to input list of atoms?                  
     num_rattle_configs: Number of times to rattle initial atom to generate an initial training set
+    rattle_stdev: Standard deviation for rattling configs in ase (if using functionality)
+    calculate_E0s: If True, calculates E0s for isolated atoms using level of DFT specified. Overrides any user given E0s. Set to False if you have already given E0s or want to use the MACE default method.
+    e0s_vacuum: size of vacuum to place around isolated atoms when calcuating e0s. Set to None for no vacuum or cell
     """
+    
     def __init__(
         self,
         AL_dir,
@@ -45,8 +50,10 @@ class AlMaceCalculator(MACECalculator):
         initial=None,                           # contains a already trained MLFF with correct number of neighbours
         initial_atom=None,                      # If no initial MLFF is given, use this atom to start training -> evaluate DFT + retrain
         num_rattle_configs=None,
-        model_tag_s2='stagetwo',                    # Tag put on model in mace after finishing stagetwo training. swa before mace 0.3.7
+        model_tag_s2='stagetwo',                # Tag put on model in mace after finishing stagetwo training. swa before mace 0.3.7
         rattle_stdev=0.005,
+        calculate_E0s=True,                     # Calculate E0s for vacuum
+        isolated_vacuum=30,                     # vacuum for calculating E0s around isolated atoms
         **kwargs,
     ):
         """Initialize the AL-MACE calculator with given parameters."""
@@ -110,16 +117,26 @@ class AlMaceCalculator(MACECalculator):
         self.mlff_parameters = mlff_parameters
         self.mlff_train_cmd = mlff_train_cmd
         self.model_tag_s2 = model_tag_s2
+        self.rattle_stdev = rattle_stdev
+        self.num_rattle_configs = num_rattle_configs
+        self.isolated_vacuum = isolated_vacuum
 
         # AL parameters
         self.al_threshold = al_threshold
         self.num_committes = num_committes
+
+        #MACE E0s
+        self.E0s = {}
+        self.calculate_e0s = calculate_E0s
 
         # set to early time
         self.time_format = "%Y%m%d%H%M%S"
         self.timestamp_fail = datetime.datetime.min.strftime(self.time_format)
         self.timestamp_train = self.timestamp_fail
         print(self.timestamp_fail)
+
+         
+
 
         #Run DFT on initial ase atom xyz (if present) and use to retrain MLFFs
         if initial_atom is not None:
@@ -129,29 +146,21 @@ class AlMaceCalculator(MACECalculator):
             self.calculate_dft(self.initial_atom)
             self.logger.info("Ran DFT on initial atom")
             self.initial_configs=[self.initial_atom]
+
+            #Calculate E0s for isolated atoms
+            if self.calculate_e0s is True:
+                #Warn user if they have given E0s but set calculate_E0s that these will be overriden (TODO maybe opposite way better?)
+                if 'E0s' in self.mlff_parameters:       
+                    self.logger.info('!WARNING: calculate_E0s set to True but user has given E0s. Overriding user given E0s!')
+                    self.logger.debug(f"User given E0s are: {mlff_parameters['E0s']}")
+                self.get_E0s(self.initial_atom)
+                
+                self.mlff_parameters['E0s']=self.E0s
+                self.logger.debug(f"Calculated E0s are: {mlff_parameters['E0s']}")
             
             #Rattle initial atom to get multiple initial configs - include a random seed
             if num_rattle_configs is not None:
-                self.logger.info(f'Creating {num_rattle_configs} rattled configs:')
-                self.rattle_stdev = rattle_stdev
-
-                #Get a seed for rattling - user provided on random - for reproducability
-                if 'random_rattle_seed' in kwargs:                                          #If user has provided seed
-                    self.grand_rattle_seed=kwargs['random_rattle_seed']
-                    
-                else:                                                                       #Else generate own
-                    self.grand_rattle_seed=random.randint(1,99999999)
-                random.seed(self.grand_rattle_seed)
-                self.rattle_seeds=random.randint(1,99999999,size=num_rattle_configs)
-                self.logger.info(f'Rattle seeds are {self.rattle_seeds}, generate from seed: {self.grand_rattle_seed}')
-
-                #generate rattled configs with ase and run dft
-                for rattle_seed in self.rattle_seeds:
-                    rattled_config=initial_atom.copy()                                      #Maybe make stdev user changeable
-                    rattled_config.rattle(stdev=self.rattle_stdev,seed=rattle_seed)
-                    self.calculate_dft(rattled_config)
-                    self.logger.info(f'Ran DFT on rattle seed {rattle_seed}')
-                    self.initial_configs.append(rattled_config)
+                self.generate_rattled_configs()
 
             for config in self.initial_configs:
                 self.create_new_training(config)
@@ -159,6 +168,7 @@ class AlMaceCalculator(MACECalculator):
             self.logger.info("Training Initial Force Field: %s", self.timestamp_train)
             self.update_mlffs()
 
+       
         if len(self.get_fname_mlffs()) < self.num_committes and initial_atom is None:
             self.logger.info(
                 "Not enough MLFFs to run committee: %d < %d",
@@ -172,6 +182,49 @@ class AlMaceCalculator(MACECalculator):
 
         mace_fnames = self.update_mlffs()
         super().__init__(mace_fnames, **kwargs)
+
+
+    def get_E0s(self, atoms):
+        """Get E0s from base level of DFT"""
+        self.logger.info("Calculating E0s")
+        atnumbers=list(set(atoms.numbers))            #Atomic number
+        atnumbers.sort()
+        e0sfile=open('e0s.yaml', 'w')
+        self.logger.info(f'Atomic numbers in initial atoms structure are: {atnumbers}')
+        for atnum in atnumbers:
+            atnum=int(atnum)
+            isolated_atom = Atoms(numbers=[atnum])
+            if self.isolated_vacuum is not None:
+                isolated_atom.center(self.isolated_vacuum/2)
+            self.calculate_dft(isolated_atom)
+            self.E0s.update({atnum:isolated_atom.info["dft_energy"]})
+            self.logger.info(f'{atnum}:\t {isolated_atom.get_chemical_formula()}\t {isolated_atom.info["dft_energy"]}')
+        
+        #Write e0s to yaml
+        e0sfile.write(f"E0s: '{self.E0s}'")
+        e0sfile.close()
+
+
+    def generate_rattled_configs(self):
+        self.logger.info(f'Creating {self.num_rattle_configs} rattled configs:')
+
+        #Get a seed for rattling - user provided on random - for reproducability
+        if 'random_rattle_seed' in self.kwargs:                                             #If user has provided seed
+            self.grand_rattle_seed=self.kwargs['random_rattle_seed']
+        else:                                                                               #Else generate own
+            self.grand_rattle_seed=random.randint(1,99999999)
+        random.seed(self.grand_rattle_seed)
+        self.rattle_seeds=random.randint(1,99999999,size=self.num_rattle_configs)
+        self.logger.info(f'Rattle seeds are {self.rattle_seeds}, generated using seed: {self.grand_rattle_seed}')
+
+        #generate rattled configs with ase and run dft
+        for rattle_seed in self.rattle_seeds:
+            rattled_config=self.initial_atom.copy()                                         #Maybe make stdev user changeable
+            rattled_config.rattle(stdev=self.rattle_stdev,seed=rattle_seed)
+            self.calculate_dft(rattled_config)
+            self.logger.info(f'Ran DFT on rattle seed {rattle_seed}')
+            self.initial_configs.append(rattled_config)
+
 
     def get_fname_mlffs(self, current=True):
         """Get filenames of MLFF models."""
@@ -329,6 +382,7 @@ class AlMaceCalculator(MACECalculator):
             wandb_name=name,
             **self.mlff_parameters,
         )
+
 
         # Temporarily replace sys.argv (list of command and arguments)
         original_argv = sys.argv
