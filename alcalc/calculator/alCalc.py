@@ -31,7 +31,7 @@ class AlMaceCalculator(MACECalculator):
     mlff_train_cmd: Command to train MLFF
     logger: Pre supplied logger
     initial: An already trained MLFF with correct number of neighbours                          
-    initial_atom: Use this as an initial atom to start training the MLFF   TODO allow user to input list of atoms?                  
+    initial_atom: Use this as an initial atom to start training the MLFF   TODO: allow user to input list of atoms                  
     num_rattle_configs: Number of times to rattle initial atom to generate an initial training set
     rattle_stdev: Standard deviation for rattling configs in ase (if using functionality)
     calculate_E0s: If True, calculates E0s for isolated atoms using level of DFT specified. Overrides any user given E0s. Set to False if you have already given E0s or want to use the MACE default method.
@@ -149,7 +149,7 @@ class AlMaceCalculator(MACECalculator):
 
             #Calculate E0s for isolated atoms
             if self.calculate_e0s is True:
-                #Warn user if they have given E0s but set calculate_E0s that these will be overriden (TODO maybe opposite way better?)
+                # Warn user if they have given E0s but set calculate_E0s that these will be overriden (TODO maybe opposite way better?)
                 if 'E0s' in self.mlff_parameters:       
                     self.logger.info('!WARNING: calculate_E0s set to True but user has given E0s. Overriding user given E0s!')
                     self.logger.debug(f"User given E0s are: {mlff_parameters['E0s']}")
@@ -316,7 +316,7 @@ class AlMaceCalculator(MACECalculator):
                 f"Split {it+1} | Train indexes: {list(map(traj_train.index, train))} | "
                 f"Validation indexes: {list(map(traj_train.index, validation))}"
             )
-            write(filename.replace(".xyz", f"_{it}.xyz"), [atoms, *train])          #This was traj_train. Should this be train instead of traj_train?
+            write(filename.replace(".xyz", f"_{it}.xyz"), [atoms, *train])         
             write(filename.replace(".xyz", f"_{it}_val.xyz"), [atoms, *validation])
             self.current_train_fname = filename
 
