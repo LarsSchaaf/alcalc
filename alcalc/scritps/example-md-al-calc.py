@@ -18,8 +18,22 @@ from alcalc.tools.fakeDFT import FakeDFTCalculator
 # If it terminates in the middle, you might be in the wrong directory, add line to change directory where file is
 # os.chdir(FILE_DIR)
 
-# 1. Read in configuration to run MD on
+#VARIABLES
 fname = "start.xyz"
+direct = "/home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/current"
+src_dir = direct
+base_new_dir = "/home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/old-"
+
+#MD
+md_outfname="md3.xyz"
+Nframes=100
+write_interval=1
+temperature_K = 300                 # For example, room temperature
+friction_coefficient = 0.02         # 1/fs, this value depends on the system and desired damping
+timestep = 1                        # md timestep in fs
+
+
+# 1. Read in configuration to run MD on
 at = read(fname)
 args = read_yaml("args-foundational.yaml")
 
@@ -28,9 +42,7 @@ args = read_yaml("args-foundational.yaml")
 # In this test case: take already trained model as DFT calculator
 calc = FakeDFTCalculator(system="cu-catalyst", device="cuda", default_dtype="float32")
 
-direct = "/home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/current"
-src_dir = direct
-base_new_dir = "/home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/old-"
+
 
 
 # 3. Change directory to a new directlry
@@ -56,6 +68,7 @@ almace = AlMaceCalculator(
     device="cuda",
     default_dtype="float32",
     initial_atom=at,
+    num_rattle_configs=3
     # initial='/home/lls34/rds/hpc-work/Data/Pynta/AL-calc/Dev/initial-it10'
 )
 
@@ -69,13 +82,10 @@ almace.calculate(at)
 
 print("Starting MD \n\n\n\n\n\n\n")
 
-temperature_K = 300  # For example, room temperature
-friction_coefficient = (
-    0.02  # 1/fs, this value depends on the system and desired damping
-)
 
 
-md = Langevin(at, 1 * units.fs, temperature_K * units.kB, friction_coefficient)
+
+md = Langevin(at, timestep * units.fs, temperature_K * units.kB, friction_coefficient)
 
 
 # Optionally initialize the velocities
@@ -88,17 +98,31 @@ at = at.copy()
 #     default_dtype='float32',
 # )
 at.calc = almace
-md = Langevin(at, 1 * units.fs, temperature_K * units.kB, friction_coefficient)
-md.attach(write, interval=1, filename="md3.xyz", images=at, append=True)
 
+
+#MD
+
+md = Langevin(at, 1 * units.fs, temperature_K * units.kB, friction_coefficient)
+write(md_outfname, at)
+md.attach(write, interval=1, filename=md_outfname, images=at, append=True)
 
 def save_time(at, dyn):
     at.info["time"] = dyn.get_time() * units.fs
 
+md.attach(save_time, interval=write_interval, at=at, dyn=md)
+md.run(Nframes)
+
+
+""" IF ABOVE NOT WORKING TRY BELOW MD
+md = Langevin(at, 1 * units.fs, trajectory='md300.traj', temperature_K =temperature_K, friction=friction_coefficient)
+
+def save_time(at, dyn):
+    at.info["time"] = dyn.get_time() * units.fs
 
 md.attach(save_time, interval=1, at=at, dyn=md)
-md.run(10000)
-
+md.run(50)
+print('DONE')
+"""
 
 """ ToDo
 typer: cli 
